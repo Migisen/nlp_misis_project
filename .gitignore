@@ -213,3 +213,5 @@ Temporary Items
 
 dataset/*
 lightning_logs
+nlp_misis_project/nlp-roberta/
+wandb
