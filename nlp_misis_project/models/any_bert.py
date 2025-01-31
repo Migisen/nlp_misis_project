@@ -11,30 +11,37 @@ from transformers import get_linear_schedule_with_warmup, AutoConfig, \
 
 
 class AnyBertClassifier(pl.LightningModule):
-    def __init__(self, lr: float = 2e-5, base_model: str = 'roberta-base', warmup_steps: int = 0, num_labels: int = 2):
+    def __init__(self, lr: float = 2e-5, base_model: str = 'roberta-base', warmup_steps: int = 0, num_labels: int = 2,
+                 token_embedding_size: int | None = None):
         super().__init__()
         self.save_hyperparameters(ignore=['lr'])
         self.lr = lr
 
         self.config = AutoConfig.from_pretrained(base_model, num_labels=num_labels)
-        self.any_bert_model = AutoModelForSequenceClassification.from_pretrained(base_model, config=self.config)
+        self.any_bert_model = AutoModelForSequenceClassification.from_pretrained(base_model, config=self.config,
+                                                                                 ignore_mismatched_sizes=True)
+        if token_embedding_size:
+            self.any_bert_model.resize_token_embeddings(token_embedding_size)
         self.confusion_matrix = ConfusionMatrix(task='binary', num_labels=num_labels)
         self.accuracy = Accuracy(task='binary', num_labels=num_labels)
         self.f1_score = F1Score(task='binary', num_labels=num_labels, average='macro')
+
+    def update_token_embedding_size(self, token_embedding_size: int):
+        self.any_bert_model.resize_token_embeddings(token_embedding_size)
 
     def forward(self, input_ids: Tensor, attention_mask: Tensor, labels: Tensor):
         return self.any_bert_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
 
     def training_step(self, batch, batch_idx: int):
         labels, input_ids, attention_mask = batch
-        labels = labels.squeeze(-1).long()
+        # labels = labels.squeeze(-1).long()
         output = self(input_ids, attention_mask, labels)
         self.log('train_ce_loss', output.loss, prog_bar=True)
         return output.loss
 
     def validation_step(self, batch, batch_idx: int):
         labels, input_ids, attention_mask = batch
-        labels = labels.squeeze(-1).long()
+        # labels = labels.squeeze(-1).long()
         output = self(input_ids, attention_mask, labels)
         self.log('val_ce_loss', output.loss, prog_bar=True)
         self.confusion_matrix.update(torch.argmax(output.logits, dim=-1), labels)
@@ -75,7 +82,7 @@ class AnyBertClassifier(pl.LightningModule):
 
     def test_step(self, batch, batch_idx: int):
         labels, input_ids, attention_mask = batch
-        labels = labels.squeeze(-1).long()
+        # labels = labels.squeeze(-1).long()
         output = self(input_ids, attention_mask, labels)
         self.log('test_ce_loss', output.loss, prog_bar=True)
         self.accuracy.update(torch.argmax(output.logits, dim=-1), labels)
